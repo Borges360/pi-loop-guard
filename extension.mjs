@@ -1,4 +1,14 @@
-import { createRuntime, scopeOf, snapshot, output, words, uid, now } from './lib/core.mjs';
+import {
+  createRuntime,
+  scopeOf,
+  snapshot,
+  output,
+  usageText,
+  buildCompletions,
+  words,
+  uid,
+  now,
+} from './lib/core.mjs';
 import { Guard, defaults } from './guard.mjs';
 export default function loopGuard(pi) {
   const rt = createRuntime(pi, 'guard', defaults);
@@ -145,34 +155,124 @@ export default function loopGuard(pi) {
     unsub?.();
     await rt.dispose();
   });
+  const POLICIES = [
+    { value: 'conservative', description: 'warn late, almost never blocks' },
+    { value: 'balanced', description: 'default thresholds, warn only' },
+    { value: 'strict', description: 'early warnings and blocks repeated no-progress calls' },
+  ];
+  const LIMITS = [
+    { value: 'tool-repeat', description: 'identical calls allowed before suspicion' },
+    {
+      value: 'no-progress-turns',
+      description: 'turns without verified progress before suspicion',
+    },
+  ];
+  const POLICY_IDS = POLICIES.map((p) => p.value);
+  const LIMIT_IDS = LIMITS.map((l) => l.value);
+  const guardSpec = {
+    name: 'guard',
+    description: 'Detect repeated work without verified progress',
+    actions: {
+      status: { hint: '', description: 'state, signals and thresholds' },
+      on: { hint: '', description: 'enable detection (warn by default)' },
+      off: { hint: '', description: 'stop detecting' },
+      warn: { hint: '', description: 'warn only, never block' },
+      enforce: { hint: '', description: 'block the 4th equivalent call' },
+      policy: {
+        hint: 'POLICY',
+        description: 'preset; strict turns on enforce',
+        args: [{ values: POLICIES, hint: 'policy' }],
+      },
+      limits: {
+        hint: 'LIMIT N',
+        description: 'tune one threshold (2..100)',
+        args: [
+          { values: LIMITS, hint: 'limit', advance: true },
+          {
+            values: [3, 4, 5, 8].map(String).map((v) => ({ value: v, description: 'integer 2..100' })),
+            hint: 'count',
+          },
+        ],
+      },
+      pause: { hint: '', description: 'pause detection for this session' },
+      resume: {
+        hint: '[--once]',
+        description: 'release one quarantined signature after approval',
+        flags: { '--once': { hint: 'single attempt (default)' } },
+      },
+      explain: { hint: '', description: 'why the last incident fired' },
+      report: {
+        hint: '[--task ID]',
+        description: 'incident history',
+        flags: { '--task': { hint: 'task id' } },
+      },
+      'change-strategy': { hint: '', description: 'clear streaks and take a different approach' },
+      escalate: { hint: '', description: 'ask for human intervention' },
+      abort: { hint: '', description: 'abort the current run' },
+      help: { hint: '', description: 'show this list' },
+    },
+  };
   pi.registerCommand('guard', {
     description:
-      'Progress guard: status | on/off | policy | limits | pause | resume --once | explain | report',
+      'Progress guard — status | on | off | policy | limits | pause | resume | explain | report | help',
+    getArgumentCompletions: buildCompletions(guardSpec),
     handler: async (args, ctx) => {
       await init(ctx);
       const [action = 'status', ...rest] = words(args);
       const c = guard.config;
       const locked = rt.config.locked?.loopGuard ?? {};
-      if (
-        ['on', 'off', 'warn', 'enforce', 'policy', 'limits'].includes(action) &&
-        Object.keys(locked).length
-      )
-        throw Error('Loop guard settings are locked by global policy');
-      if (action === 'on') c.enabled = true;
-      else if (action === 'off') c.enabled = false;
-      else if (action === 'warn' || action === 'enforce') c.mode = action;
-      else if (action === 'policy') {
-        if (!['conservative', 'balanced', 'strict'].includes(rest[0]))
-          throw Error('Invalid policy');
+      // A locked policy must say which knob, not just "locked".
+      const lockedField = {
+        on: 'enabled',
+        off: 'enabled',
+        warn: 'mode',
+        enforce: 'mode',
+        policy: 'policy',
+        limits: 'repeatedIdenticalCalls',
+      }[action];
+      if (lockedField && Object.hasOwn(locked, lockedField))
+        throw Error(`loopGuard.${lockedField} is locked by global policy and cannot be changed here.`);
+      // Persisting keeps the setting after a reload; the Guard owns the live copy.
+      const persist = async (patch) => {
+        try {
+          return await rt.save('loopGuard', patch);
+        } catch (e) {
+          output(
+            ctx,
+            `Applies to this session only — could not save: ${e.message}`,
+            'warning',
+          );
+        }
+      };
+      if (action === 'help') return output(ctx, usageText('guard', guardSpec));
+      if (action === 'on') {
+        c.enabled = true;
+        await persist({ enabled: true });
+      } else if (action === 'off') {
+        c.enabled = false;
+        await persist({ enabled: false });
+      } else if (action === 'warn' || action === 'enforce') {
+        c.mode = action;
+        await persist({ mode: action });
+      } else if (action === 'policy') {
+        if (!POLICY_IDS.includes(rest[0]))
+          throw Error(`Invalid policy. Use: ${POLICY_IDS.join(' | ')}`);
         c.policy = rest[0];
         c.mode = rest[0] === 'strict' ? 'enforce' : 'warn';
+        await persist({ policy: rest[0], mode: c.mode });
       } else if (action === 'limits') {
         const value = Number(rest[1]);
         if (!Number.isInteger(value) || value < 2 || value > 100)
-          throw Error('Limit must be 2..100');
-        if (rest[0] === 'tool-repeat') c.repeatedIdenticalCalls = value;
-        else if (rest[0] === 'no-progress-turns') c.noProgressTurns = value;
-        else throw Error('Unknown limit');
+          throw Error(
+            `Limit must be an integer 2..100. Current: ${rest[0]} = ${c[rest[0] === 'tool-repeat' ? 'repeatedIdenticalCalls' : 'noProgressTurns'] ?? '?'}`,
+          );
+        if (rest[0] === 'tool-repeat') {
+          c.repeatedIdenticalCalls = value;
+          await persist({ repeatedIdenticalCalls: value });
+        } else if (rest[0] === 'no-progress-turns') {
+          c.noProgressTurns = value;
+          await persist({ noProgressTurns: value });
+        } else throw Error(`Unknown limit. Use: ${LIMIT_IDS.join(' | ')}`);
       } else if (action === 'pause') guard.pause();
       else if (action === 'resume') {
         const key = guard.incident?.key ?? guard.events.at(-1)?.key;
@@ -207,7 +307,7 @@ export default function loopGuard(pi) {
             .slice(-50),
         );
       } else if (!['status', 'explain', 'report'].includes(action))
-        throw Error('Unknown /guard command');
+        throw Error(`Unknown /guard ${action}\n${usageText('guard', guardSpec)}`);
       await save(ctx);
       output(ctx, guard.report());
     },
