@@ -20,3 +20,4 @@ Provas de progresso vêm de checks verificados do gate e de hash semântico dos 
 `turn_end` atualiza suspeita sem LLM.` agent_before_settle` emite diagnóstico deduplicado por incidente, nunca pede continuação automática. Relatórios incluem sinais, últimas assinaturas, custo conhecido e opções de recuperação. Escalate solicita intervenção; não troca modelo arbitrariamente nem inventa aceite.
 
 Estado, incidentes e overrides em JSON/JSONL isolado por projeto/sessão; **sem banco**. Instalar/remover com `pi install ./pi-loop-guard` /` pi remove ./pi-loop-guard`.` npm test` valida warn/enforce, paralelismo, fingerprints, provas, TTL e exceções. Calibração de falsos positivos em tarefas reais ainda requer um conjunto de avaliação do seu ambiente.
+# pi-loop-guard
