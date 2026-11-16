@@ -1,6 +1,6 @@
 {
   "name": "pi-loop-guard",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,7 +11,8 @@
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-ai": "*"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "dependencies": {
     "yaml": "2.8.2"
@@ -22,6 +23,17 @@
     ]
   },
   "scripts": {
-    "test": "node --test"
-  }
+    "test": "node --test",
+    "smoke": "node scripts/smoke-panel.mjs"
+  },
+  "description": "Deterministic loop and no-progress guard for Pi Coding Agent",
+  "files": [
+    "index.ts",
+    "extension.mjs",
+    "guard.mjs",
+    "menu.mjs",
+    "lib",
+    "scripts",
+    "docs/assets"
+  ]
 }

@@ -9,6 +9,9 @@ export const defaults = {
     quarantineTtlSeconds: 120,
     windowSize: 50,
     exceptions: [],
+    /** What counts as progress at all (rule E: the scope is this session's work). */
+    relevantPaths: ['**'],
+    scope: { source: 'relevant', strict: true },
   },
 };
 export const digest = hash;

@@ -1,0 +1,6 @@
+schema: harness/skill-metadata/v1
+id: pi-loop-guard
+version: 1.0.0
+owner: pi-loop-guard
+source: "README.md, AGENTS.md, package.json, extension.mjs, guard.mjs, lib/core.mjs"
+scope: "product-local; Pi, Codex and Cursor"
